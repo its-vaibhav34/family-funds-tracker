@@ -122,12 +122,21 @@ export const adminAPI = {
     const response = await fetch(`${API_BASE_URL}/funds/${accountId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ actualBalance: newActual }),
+      body: JSON.stringify({ newActual }),
     });
     if (!response.ok) throw new Error('Failed to update actual balance');
     const data = await response.json();
     console.log('[v0] Actual balance API response:', data);
     return data.data;
+  },
+
+  resetAllLogs: async (): Promise<void> => {
+    const response = await fetch(`${API_BASE_URL}/funds/reset-logs`, {
+      method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to reset logs');
+    const data = await response.json();
+    console.log('[v0] Reset logs API response:', data);
   },
 };
 

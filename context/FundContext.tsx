@@ -320,7 +320,18 @@ export const FundProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const resetAllTransactions = () => {
+  const resetAllTransactions = async () => {
+    // Call backend API to reset logs
+    if (isOnline) {
+      try {
+        await adminAPI.resetAllLogs();
+        console.log('[v0] All logs reset successfully in MongoDB');
+      } catch (error) {
+        console.error('Error resetting logs:', error);
+      }
+    }
+    
+    // Also clear localStorage and reset local state
     localStorage.removeItem(STORAGE_KEY);
     setState({
       accounts: INITIAL_ACCOUNTS(),
