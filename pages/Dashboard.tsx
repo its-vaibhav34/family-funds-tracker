@@ -19,8 +19,9 @@ const SummaryCard = ({ title, amount, icon: Icon, colorClass, subtitle }: any) =
   </div>
 );
 
-const AccountCard = ({ account, onAction }: any) => {
-  const pending = account.targetBalance - account.actualBalance;
+const AccountCard = ({ account, onAction, unreimbursedSpending }: any) => {
+  // Shortfall is based only on unreimbursed spending, not mandate changes
+  const pending = unreimbursedSpending;
   
   return (
     <div className="bg-white rounded-[2rem] border-2 border-slate-100 overflow-hidden shadow-xl flex flex-col transition-all hover:border-blue-200">
@@ -80,16 +81,29 @@ const AccountCard = ({ account, onAction }: any) => {
 };
 
 export default function Dashboard() {
-  const { accounts } = useFund();
+  const { accounts, transactions } = useFund();
   const [modalState, setModalState] = useState<{ isOpen: boolean; account: any; type: any }>({
     isOpen: false,
     account: null,
     type: 'SPEND'
   });
 
+  // Calculate unreimbursed spending for each account
+  const getUnreimbursedSpending = (accountId: string) => {
+    const accountTransactions = transactions.filter(t => t.accountId === accountId);
+    const totalSpent = accountTransactions
+      .filter(t => t.type === 'SPEND')
+      .reduce((sum, t) => sum + t.amount, 0);
+    const totalTopups = accountTransactions
+      .filter(t => t.type === 'PAPA_TOPUP')
+      .reduce((sum, t) => sum + t.amount, 0);
+    return totalSpent - totalTopups;
+  };
+
   const totalTarget = accounts.reduce((acc, curr) => acc + curr.targetBalance, 0);
   const totalActual = accounts.reduce((acc, curr) => acc + curr.actualBalance, 0);
-  const totalPending = totalTarget - totalActual;
+  // Total shortfall is sum of unreimbursed spending from all accounts
+  const totalPending = accounts.reduce((sum, acc) => sum + Math.max(0, getUnreimbursedSpending(acc.id)), 0);
 
   const handleAction = (account: any, type: any) => {
     setModalState({ isOpen: true, account, type });
@@ -134,7 +148,12 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-10">
         {accounts.map(acc => (
-          <AccountCard key={acc.id} account={acc} onAction={handleAction} />
+          <AccountCard 
+            key={acc.id} 
+            account={acc} 
+            onAction={handleAction} 
+            unreimbursedSpending={getUnreimbursedSpending(acc.id)}
+          />
         ))}
       </div>
 
