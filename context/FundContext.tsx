@@ -146,13 +146,25 @@ export const FundProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Make API call
     if (isOnline) {
       try {
-        await transactionAPI.create({
+        const result = await transactionAPI.create({
           accountId,
           accountName: account.name,
           type,
           amount,
           description,
         });
+        
+        // Update the transaction with the actual MongoDB _id
+        if (result.transaction && result.transaction._id) {
+          setState(prev => ({
+            ...prev,
+            transactions: prev.transactions.map(t => 
+              t.id === newTransaction.id 
+                ? { ...t, id: result.transaction._id || result.transaction.id || t.id }
+                : t
+            ),
+          }));
+        }
       } catch (error) {
         console.error('Error creating transaction:', error);
         // Revert on error

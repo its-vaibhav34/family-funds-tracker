@@ -20,7 +20,7 @@ const SummaryCard = ({ title, amount, icon: Icon, colorClass, subtitle }: any) =
 );
 
 const AccountCard = ({ account, onAction, unreimbursedSpending }: any) => {
-  // Shortfall is based only on unreimbursed spending, not mandate changes
+  // Shortfall is based only on unreimbursed spending (spend - topup)
   const pending = unreimbursedSpending;
   
   return (
@@ -102,8 +102,8 @@ export default function Dashboard() {
 
   const totalTarget = accounts.reduce((acc, curr) => acc + curr.targetBalance, 0);
   const totalActual = accounts.reduce((acc, curr) => acc + curr.actualBalance, 0);
-  // Total shortfall is sum of unreimbursed spending from all accounts
-  const totalPending = accounts.reduce((sum, acc) => sum + Math.max(0, getUnreimbursedSpending(acc.id)), 0);
+  // Total shortfall is the difference between target and actual (mandate vs reality)
+  const totalShortfall = Math.max(0, totalTarget - totalActual);
 
   const handleAction = (account: any, type: any) => {
     setModalState({ isOpen: true, account, type });
@@ -139,10 +139,10 @@ export default function Dashboard() {
         />
         <SummaryCard 
           title="Family Shortfall" 
-          amount={totalPending > 0 ? totalPending : 0} 
+          amount={totalShortfall > 0 ? totalShortfall : 0} 
           icon={AlertCircle} 
-          colorClass={totalPending > 0 ? "bg-red-500 text-white" : "bg-emerald-100 text-emerald-700"}
-          subtitle={totalPending > 0 ? "Pending from Papa" : "Fully Maintained"}
+          colorClass={totalShortfall > 0 ? "bg-red-500 text-white" : "bg-emerald-100 text-emerald-700"}
+          subtitle={totalShortfall > 0 ? "Pending from Papa" : "Fully Maintained"}
         />
       </div>
 
@@ -162,9 +162,8 @@ export default function Dashboard() {
           <h3 className="text-2xl font-black text-slate-900 uppercase tracking-tighter mb-4">Usecase Summary</h3>
           <p className="text-slate-500 font-medium leading-relaxed">
             Your father gave <span className="text-slate-900 font-black">₹{totalTarget.toLocaleString()}</span> to maintain. 
-            When you spend (like your ₹4k or Mummy's ₹3k), the shortfall increases. 
-            The "Family Shortfall" tells you exactly what to ask from Papa. 
-            Once he gives you the top-up (like that ₹10k), record it to bring the balances back to the original mandated amounts.
+            The "Family Shortfall" shows the difference between the target mandate and actual bank balance. 
+            When actual balance is less than target (whether from spending or balance corrections), the shortfall tells you exactly what to ask from Papa. 
           </p>
         </div>
       </div>
