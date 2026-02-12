@@ -17,7 +17,7 @@ const allowedOrigins = [
   'http://localhost:3000',           // Local development
   'http://localhost:5173',           // Vite default port
   process.env.FRONTEND_URL || '',    // From .env file
-  'https://yourdomain.com'           // Fallback
+  'https://family-funds-tracker.vercel.app'           // Fallback
 ].filter(Boolean);
 
 const corsOptions = {
