@@ -1,35 +1,32 @@
 import mongoose from 'mongoose';
 
 const transactionSchema = new mongoose.Schema({
-  fundId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Fund',
+  accountId: {
+    type: String,
+    required: true,
+  },
+  accountName: {
+    type: String,
+    enum: ['Mummy', 'Vaibhav'],
     required: true,
   },
   type: {
     type: String,
-    enum: ['income', 'expense'],
+    enum: ['SPEND', 'DEPOSIT', 'PAPA_TOPUP'],
     required: true,
   },
   amount: {
     type: Number,
     required: true,
   },
-  category: String,
-  description: String,
-  date: {
-    type: Date,
+  description: {
+    type: String,
     required: true,
   },
-  createdBy: String,
   createdAt: {
     type: Date,
     default: Date.now,
   },
-  updatedAt: {
-    type: Date,
-    default: Date.now,
-  }
 });
 
 export default mongoose.model('Transaction', transactionSchema);

@@ -14,25 +14,38 @@ const TransactionModal: React.FC<Props> = ({ isOpen, onClose, account, type }) =
   const { addTransaction } = useFund();
   const [amount, setAmount] = useState('');
   const [description, setDescription] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
 
   if (!isOpen || !account) return null;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError('');
     const val = parseFloat(amount);
+    
     if (isNaN(val) || val <= 0) {
-      alert('Please enter a valid positive amount.');
+      setError('Please enter a valid positive amount.');
       return;
     }
+    
     if (!description.trim()) {
-      alert('Please enter a description.');
+      setError('Please enter a description.');
       return;
     }
 
-    addTransaction(account.id, type, val, description);
-    setAmount('');
-    setDescription('');
-    onClose();
+    setIsLoading(true);
+    try {
+      await addTransaction(account.id, type, val, description);
+      setAmount('');
+      setDescription('');
+      setError('');
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to add transaction');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getTheme = () => {
@@ -89,26 +102,44 @@ const TransactionModal: React.FC<Props> = ({ isOpen, onClose, account, type }) =
             <textarea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all resize-none text-slate-900 font-medium"
+              disabled={isLoading}
+              className="w-full px-5 py-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:ring-4 focus:ring-blue-100 focus:border-blue-500 outline-none transition-all resize-none text-slate-900 font-medium disabled:opacity-50"
               placeholder={type === 'PAPA_TOPUP' ? "Reason for reimbursement..." : "What was this for?"}
               rows={3}
               required
             ></textarea>
           </div>
 
+          {error && (
+            <div className="bg-red-50 border-2 border-red-100 p-4 rounded-2xl">
+              <p className="text-sm font-bold text-red-600">{error}</p>
+            </div>
+          )}
+
           <div className="flex gap-4 pt-4">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl text-slate-600 font-black uppercase tracking-widest hover:bg-slate-50 transition-all active:scale-95"
+              disabled={isLoading}
+              className="flex-1 px-6 py-4 border-2 border-slate-100 rounded-2xl text-slate-600 font-black uppercase tracking-widest hover:bg-slate-50 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-2xl text-white font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 ${theme.btn} hover:brightness-110 shadow-${type === 'SPEND' ? 'red' : type === 'PAPA_TOPUP' ? 'blue' : 'green'}-100`}
+              disabled={isLoading}
+              className={`flex-1 flex items-center justify-center gap-2 px-6 py-4 rounded-2xl text-white font-black uppercase tracking-widest shadow-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed ${theme.btn} hover:brightness-110`}
             >
-              <Check size={20} strokeWidth={3} /> Record
+              {isLoading ? (
+                <>
+                  <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Check size={20} strokeWidth={3} /> Record
+                </>
+              )}
             </button>
           </div>
         </form>

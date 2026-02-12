@@ -13,7 +13,10 @@ export default function Admin() {
   const [familyGoal, setFamilyGoal] = useState('');
   const [targetReason, setTargetReason] = useState('');
 
-  const [selectedAdjustAcc, setSelectedAdjustAcc] = useState('1');
+  const [selectedAdjustAcc, setSelectedAdjustAcc] = useState<string>(() => {
+    // Initialize with first account ID or '1' as fallback
+    return accounts.length > 0 ? accounts[0].id : '1';
+  });
   const [adjustVal, setAdjustVal] = useState('');
   const [adjustReason, setAdjustReason] = useState('');
 
@@ -29,7 +32,7 @@ export default function Admin() {
   };
 
   // HANDLERS
-  const handleUpdateTarget = (e: React.FormEvent) => {
+  const handleUpdateTarget = async (e: React.FormEvent) => {
     e.preventDefault();
     const val = parseFloat(familyGoal);
     
@@ -42,13 +45,18 @@ export default function Admin() {
       return;
     }
 
-    updateFamilyTarget(val, targetReason);
-    setFamilyGoal('');
-    setTargetReason('');
-    showToast('Global Family Goal Updated!', 'success');
+    try {
+      await updateFamilyTarget(val, targetReason);
+      setFamilyGoal('');
+      setTargetReason('');
+      showToast('Global Family Goal Updated!', 'success');
+    } catch (err) {
+      showToast('Failed to update family goal. Check backend.', 'error');
+      console.error('[v0] Error:', err);
+    }
   };
 
-  const handleAdjustBalance = (e: React.FormEvent) => {
+  const handleAdjustBalance = async (e: React.FormEvent) => {
     e.preventDefault();
     const val = parseFloat(adjustVal);
     
@@ -61,10 +69,23 @@ export default function Admin() {
       return;
     }
 
-    adjustActualBalance(selectedAdjustAcc, val, adjustReason);
-    setAdjustVal('');
-    setAdjustReason('');
-    showToast('Bank Balance Corrected', 'success');
+    try {
+      // Find the account by ID to get its actual MongoDB ID
+      const selectedAccount = accounts.find(a => a.id === selectedAdjustAcc);
+      if (!selectedAccount) {
+        showToast('Account not found', 'error');
+        return;
+      }
+      
+      console.log('[v0] Adjusting balance for account:', selectedAccount.name, 'with ID:', selectedAdjustAcc);
+      await adjustActualBalance(selectedAdjustAcc, val, adjustReason);
+      setAdjustVal('');
+      setAdjustReason('');
+      showToast('Bank Balance Corrected', 'success');
+    } catch (err) {
+      showToast('Failed to update balance. Check backend.', 'error');
+      console.error('[v0] Error:', err);
+    }
   };
 
   const handleResetClick = () => {
@@ -174,8 +195,11 @@ export default function Admin() {
                   onChange={(e) => setSelectedAdjustAcc(e.target.value)}
                   className={`${inputClass} !py-3.5`}
                 >
-                  <option value="1">Mummy</option>
-                  <option value="2">Vaibhav</option>
+                  {accounts.map(account => (
+                    <option key={account.id} value={account.id}>
+                      {account.name}
+                    </option>
+                  ))}
                 </select>
               </div>
               <div>

@@ -4,16 +4,18 @@ import {
   Account, Transaction, TargetBalanceHistory, 
   ActualBalanceAdjustmentHistory, FundState, TransactionType, AccountName 
 } from '../types';
+import { accountAPI, transactionAPI, healthCheck, adminAPI } from '../services/api';
 
 interface FundContextType extends FundState {
-  addTransaction: (accountId: string, type: TransactionType, amount: number, description: string) => void;
-  deleteTransaction: (transactionId: string) => void;
+  addTransaction: (accountId: string, type: TransactionType, amount: number, description: string) => Promise<void>;
+  deleteTransaction: (transactionId: string) => Promise<void>;
   bulkDeleteTransactions: (startDate: string, endDate: string) => void;
   resetAllTransactions: () => void;
   updateTargetBalance: (accountId: string, newTarget: number, reason: string) => void;
   updateFamilyTarget: (newTotal: number, reason: string) => void;
   adjustActualBalance: (accountId: string, newActual: number, reason: string) => void;
   getAccountById: (id: string) => Account | undefined;
+  isOnline: boolean;
 }
 
 const FundContext = createContext<FundContextType | undefined>(undefined);
@@ -32,7 +34,6 @@ export const FundProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Basic validation of parsed data
         if (parsed && Array.isArray(parsed.accounts)) return parsed;
       }
     } catch (e) {
@@ -46,6 +47,62 @@ export const FundProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   });
 
+  const [isOnline, setIsOnline] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
+
+  // Check backend connectivity and load data from server
+  useEffect(() => {
+    const initializeData = async () => {
+      try {
+        const isBackendAvailable = await healthCheck();
+        if (isBackendAvailable) {
+          setIsOnline(true);
+          // Load accounts from backend
+          const accounts = await accountAPI.getAll();
+          if (accounts && accounts.length > 0) {
+            const mappedAccounts = accounts.map(acc => ({
+              id: acc._id || acc.id || '',
+              name: acc.name as AccountName,
+              targetBalance: acc.targetBalance,
+              actualBalance: acc.actualBalance,
+              updatedAt: acc.updatedAt || new Date().toISOString(),
+            }));
+            
+            // Load transactions from backend
+            const transactions = await transactionAPI.getAll();
+            const mappedTransactions = transactions.map(tx => ({
+              id: tx._id || tx.id || '',
+              accountId: tx.accountId,
+              accountName: tx.accountName as AccountName,
+              type: tx.type as TransactionType,
+              amount: tx.amount,
+              description: tx.description,
+              createdAt: tx.createdAt || new Date().toISOString(),
+            }));
+
+            setState({
+              accounts: mappedAccounts,
+              transactions: mappedTransactions,
+              targetHistory: [],
+              adjustmentHistory: [],
+            });
+          }
+        } else {
+          setIsOnline(false);
+          console.log('Backend not available, using localStorage');
+        }
+      } catch (error) {
+        console.error('Error loading from backend:', error);
+        setIsOnline(false);
+      } finally {
+        setIsInitialized(true);
+      }
+    };
+
+    initializeData();
+  }, []);
+
+  // Save to localStorage whenever state changes
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
@@ -54,58 +111,99 @@ export const FundProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return state.accounts.find(a => a.id === id);
   }, [state.accounts]);
 
-  const addTransaction = (accountId: string, type: TransactionType, amount: number, description: string) => {
-    setState(prev => {
-      const account = prev.accounts.find(a => a.id === accountId);
-      if (!account) return prev;
+  const addTransaction = async (accountId: string, type: TransactionType, amount: number, description: string) => {
+    const account = state.accounts.find(a => a.id === accountId);
+    if (!account) throw new Error('Account not found');
 
-      if (type === 'SPEND' && amount > account.actualBalance) {
-        alert('Error: Spending cannot exceed actual bank balance.');
-        return prev;
+    if (type === 'SPEND' && amount > account.actualBalance) {
+      alert('Error: Spending cannot exceed actual bank balance.');
+      throw new Error('Insufficient balance');
+    }
+
+    // Optimistic update
+    const newTransaction: Transaction = {
+      id: generateId(),
+      accountId,
+      accountName: account.name,
+      type,
+      amount,
+      description,
+      createdAt: new Date().toISOString(),
+    };
+
+    const updatedActualBalance = type === 'SPEND' 
+      ? account.actualBalance - amount 
+      : account.actualBalance + amount;
+
+    setState(prev => ({
+      ...prev,
+      transactions: [newTransaction, ...prev.transactions],
+      accounts: prev.accounts.map(a => 
+        a.id === accountId ? { ...a, actualBalance: updatedActualBalance, updatedAt: new Date().toISOString() } : a
+      ),
+    }));
+
+    // Make API call
+    if (isOnline) {
+      try {
+        await transactionAPI.create({
+          accountId,
+          accountName: account.name,
+          type,
+          amount,
+          description,
+        });
+      } catch (error) {
+        console.error('Error creating transaction:', error);
+        // Revert on error
+        setState(prev => ({
+          ...prev,
+          transactions: prev.transactions.filter(t => t.id !== newTransaction.id),
+          accounts: prev.accounts.map(a => 
+            a.id === accountId ? { ...a, actualBalance: account.actualBalance, updatedAt: new Date().toISOString() } : a
+          ),
+        }));
+        throw error;
       }
-
-      const newTransaction: Transaction = {
-        id: generateId(),
-        accountId,
-        accountName: account.name,
-        type,
-        amount,
-        description,
-        createdAt: new Date().toISOString(),
-      };
-
-      const updatedActualBalance = type === 'SPEND' 
-        ? account.actualBalance - amount 
-        : account.actualBalance + amount;
-
-      return {
-        ...prev,
-        transactions: [newTransaction, ...prev.transactions],
-        accounts: prev.accounts.map(a => 
-          a.id === accountId ? { ...a, actualBalance: updatedActualBalance, updatedAt: new Date().toISOString() } : a
-        ),
-      };
-    });
+    }
   };
 
-  const deleteTransaction = (transactionId: string) => {
-    setState(prev => {
-      const tx = prev.transactions.find(t => t.id === transactionId);
-      if (!tx) return prev;
-      const account = prev.accounts.find(a => a.id === tx.accountId);
-      if (!account) return prev;
+  const deleteTransaction = async (transactionId: string) => {
+    const tx = state.transactions.find(t => t.id === transactionId);
+    if (!tx) throw new Error('Transaction not found');
 
-      const adjustment = tx.type === 'SPEND' ? tx.amount : -tx.amount;
-      const newBalance = account.actualBalance + adjustment;
+    const account = state.accounts.find(a => a.id === tx.accountId);
+    if (!account) throw new Error('Account not found');
 
-      return {
-        ...prev,
-        transactions: prev.transactions.filter(t => t.id !== transactionId),
-        accounts: prev.accounts.map(a => 
-          a.id === tx.accountId ? { ...a, actualBalance: newBalance, updatedAt: new Date().toISOString() } : a
-        ),
-      };
-    });
+    const adjustment = tx.type === 'SPEND' ? tx.amount : -tx.amount;
+    const newBalance = account.actualBalance + adjustment;
+
+    // Optimistic update
+    setState(prev => ({
+      ...prev,
+      transactions: prev.transactions.filter(t => t.id !== transactionId),
+      accounts: prev.accounts.map(a => 
+        a.id === tx.accountId ? { ...a, actualBalance: newBalance, updatedAt: new Date().toISOString() } : a
+      ),
+    }));
+
+    // Make API call
+    if (isOnline) {
+      try {
+        await transactionAPI.delete(transactionId);
+      } catch (error) {
+        console.error('Error deleting transaction:', error);
+        // Revert on error
+        setState(prev => ({
+          ...prev,
+          transactions: [tx, ...prev.transactions],
+          accounts: prev.accounts.map(a => 
+            a.id === tx.accountId ? { ...a, actualBalance: account.actualBalance, updatedAt: new Date().toISOString() } : a
+          ),
+        }));
+        throw error;
+      }
+    }
   };
 
   const updateTargetBalance = (accountId: string, newTarget: number, reason: string) => {
@@ -134,10 +232,11 @@ export const FundProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
-  const updateFamilyTarget = (newTotal: number, reason: string) => {
+  const updateFamilyTarget = async (newTotal: number, reason: string) => {
     const mummyPortion = Math.round((newTotal * 2) / 3);
     const vaibhavPortion = newTotal - mummyPortion;
 
+    // Optimistic update
     setState(prev => {
       const histories: TargetBalanceHistory[] = [];
       const updatedAccounts = prev.accounts.map(a => {
@@ -164,18 +263,36 @@ export const FundProvider: React.FC<{ children: React.ReactNode }> = ({ children
         accounts: updatedAccounts
       };
     });
+
+    // Make API call
+    if (isOnline) {
+      try {
+        await adminAPI.updateFamilyTargets(mummyPortion, vaibhavPortion);
+        console.log('[v0] Family targets updated successfully in MongoDB');
+      } catch (error) {
+        console.error('Error updating family targets:', error);
+      }
+    }
   };
 
-  const adjustActualBalance = (accountId: string, newActual: number, reason: string) => {
-    setState(prev => {
-      const account = prev.accounts.find(a => a.id === accountId);
-      if (!account) return prev;
+  const adjustActualBalance = async (accountId: string, newActual: number, reason: string) => {
+    // Find account from current state
+    const account = state.accounts.find(a => a.id === accountId);
+    if (!account) {
+      console.error('[v0] Account not found with ID:', accountId);
+      console.error('[v0] Available accounts:', state.accounts.map(a => ({ id: a.id, name: a.name })));
+      throw new Error(`Account not found with ID: ${accountId}`);
+    }
 
+    const oldBalance = account.actualBalance;
+
+    // Optimistic update
+    setState(prev => {
       const history: ActualBalanceAdjustmentHistory = {
         id: generateId(),
         accountId,
         accountName: account.name,
-        oldActualBalance: account.actualBalance,
+        oldActualBalance: oldBalance,
         newActualBalance: newActual,
         adjustmentReason: reason,
         adjustedAt: new Date().toISOString(),
@@ -189,13 +306,22 @@ export const FundProvider: React.FC<{ children: React.ReactNode }> = ({ children
         ),
       };
     });
+
+    // Make API call to save to MongoDB
+    if (isOnline) {
+      try {
+        console.log('[v0] Calling updateActualBalance for account:', accountId, 'Account name:', account.name, 'New balance:', newActual);
+        await adminAPI.updateActualBalance(accountId, newActual);
+        console.log('[v0] Actual balance updated successfully in MongoDB');
+      } catch (error) {
+        console.error('Error updating actual balance:', error);
+        throw error;
+      }
+    }
   };
 
   const resetAllTransactions = () => {
-    // Immediate local storage purge
     localStorage.removeItem(STORAGE_KEY);
-    
-    // Nuclear state reset
     setState({
       accounts: INITIAL_ACCOUNTS(),
       transactions: [],
@@ -238,6 +364,14 @@ export const FundProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   };
 
+  if (!isInitialized) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+        <p>Loading...</p>
+      </div>
+    );
+  }
+
   return (
     <FundContext.Provider value={{ 
       ...state, 
@@ -248,7 +382,8 @@ export const FundProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateTargetBalance, 
       updateFamilyTarget,
       adjustActualBalance, 
-      getAccountById 
+      getAccountById,
+      isOnline
     }}>
       {children}
     </FundContext.Provider>
