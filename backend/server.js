@@ -13,10 +13,23 @@ const app = express();
 const PORT = process.env.PORT || 10000;
 
 // Middleware
+const allowedOrigins = [
+  'http://localhost:3000',           // Local development
+  'http://localhost:5173',           // Vite default port
+  process.env.FRONTEND_URL || '',    // From .env file
+  'https://yourdomain.com'           // Fallback
+].filter(Boolean);
+
 const corsOptions = {
-  origin: process.env.NODE_ENV === 'production' 
-    ? 'https://yourdomain.com' // Update with your production domain
-    : 'http://localhost:3000',
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps, Curl requests)
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   credentials: true,
   optionsSuccessStatus: 200

@@ -1,4 +1,4 @@
-const API_BASE_URL = 'http://localhost:10000/api';
+const API_BASE_URL = 'https://family-funds-backend.onrender.com/api';
 
 export interface Account {
   _id?: string;
@@ -119,7 +119,7 @@ export const adminAPI = {
   },
 
   updateActualBalance: async (accountId: string, newActual: number): Promise<Account> => {
-    const response = await fetch(`${API_BASE_URL}/funds/${accountId}`, {
+    const response = await fetch(`${API_BASE_URL}/funds/${accountId}/actual-balance`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ newActual }),

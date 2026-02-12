@@ -9,13 +9,15 @@ router.patch('/family-targets/update', updateFamilyTargets);
 router.post('/reset-logs', resetAllLogs);
 
 router.get('/', fundController.getAllAccounts);
-router.get('/:id', fundController.getAccountById);
 router.post('/', fundController.createAccount);
+
+// Specific routes before generic /:id routes
+router.patch('/:id/target-balance', fundController.updateTargetBalance);
+router.patch('/:id/actual-balance', updateActualBalance);
+
+// Generic routes
+router.get('/:id', fundController.getAccountById);
 router.put('/:id', fundController.updateAccount);
 router.delete('/:id', fundController.deleteAccount);
-
-router.patch('/:id', updateActualBalance);
-router.patch('/:id/target-balance', fundController.updateTargetBalance);
-router.patch('/:id/actual-balance', fundController.updateActualBalance);
 
 export default router;
